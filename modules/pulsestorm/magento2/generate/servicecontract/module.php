@@ -188,11 +188,37 @@ function generateDiConfigurations($moduleName, $repositoryInterfaceName,
         'type'  =>$modelToSign]);                        
 }
 
+function getDbSchemaTableDefinition($module_dir, $tableName)
+{
+    $path_db_schema_xml = $module_dir . '/etc/db_schema.xml';
+    $db_schema_xml = simplexml_load_file($path_db_schema_xml);
+
+    $nodes = $db_schema_xml->xpath('/schema/table[@name="'.$tableName.'"]/column');
+
+    if (empty($nodes)) {
+        return false;
+    }
+
+    $tableDefinition = [];
+
+    foreach ($nodes as $column) {
+        $tableDefinition[(string) $column['name']] = 'string'; // @todo set the correct data type
+//        var_dump($column->asXML());
+    }
+
+    return $tableDefinition;
+}
+
 /**
 * ALPHA: Service Contract Generator
 *
 * @command magento2:generate:service-contract
+* @argument namespace Vendor Namespace? [Pulsestorm]
+* @argument name Module Name? [Apitest2]
+* @argument entity_name What entity name? [Thing]
 * @option skip-warning Allows user to skip experimental warning
+* @option skip-webapi Skip creation of web api
+* @option dbschema-table Skip creation of web api
 */
 function pestle_cli($argv, $options)
 {
@@ -201,24 +227,33 @@ function pestle_cli($argv, $options)
         input("DANGER: Experimental Feature, might expose api endpoints.  \nPress enter to continue.");
     }
     
-    $moduleName              = 'Pulsestorm_Apitest2';
-    $modelToSign             = 'Pulsestorm\Apitest2\Model\Thing';
-    $interfaceName           = 'Pulsestorm\Apitest2\Api\Data\ThingInterface';
-    $repositoryName          = 'Pulsestorm\Apitest2\Model\ThingRepository';
-    $repositoryInterfaceName = 'Pulsestorm\Apitest2\Api\ThingRepositoryInterface';    
-    $apiEndpoint             = '/V1/pulsestorm_apitest2/things/:id';
+    $moduleName              = $argv['namespace'] . '_' . $argv['name'];
+    $modelToSign             = $argv['namespace'] . '\\' . $argv['name'] . '\Model\\' . $argv['entity_name'];
+    $interfaceName           = $argv['namespace'] . '\\' . $argv['name'] . '\Api\Data\\' . $argv['entity_name'] .'Interface';
+    $repositoryName          = $argv['namespace'] . '\\' . $argv['name'] . '\Model\\'. $argv['entity_name'] .'Repository';
+    $repositoryInterfaceName = $argv['namespace'] . '\\' . $argv['name'] . '\Api\\'. $argv['entity_name'] .'RepositoryInterface';
+    $apiEndpoint             = '/V1/' . strtolower($argv['namespace']) . '_' . strtolower($argv['name']) .'/'. strtolower($argv['entity_name']) .'s/:id';
     $resourceId              = 'anonymous';
     $properties              = [
         'id'=>'int'
     ];
     
     $moduleInfo              = getModuleInformation($moduleName);
-    
-        
+
+    if($options['dbschema-table'] && ($tableDefinition = getDbSchemaTableDefinition($moduleInfo->folder, $options['dbschema-table'])))
+    {
+//        var_dump($tableDefinition);
+        $properties = array_merge($properties, $tableDefinition);
+    }
+
+//    die('asd');
     generateDiConfigurations($moduleName, $repositoryInterfaceName, 
-        $repositoryName, $interfaceName, $modelToSign);        
-    
-    generateWebApiXml($moduleInfo, $apiEndpoint, $repositoryInterfaceName, $resourceId);    
+        $repositoryName, $interfaceName, $modelToSign);
+
+    if(!$options['skip-webapi'])
+    {
+        generateWebApiXml($moduleInfo, $apiEndpoint, $repositoryInterfaceName, $resourceId);
+    }
     generateRepositoryClassAndInterface($moduleInfo, $repositoryName, $repositoryInterfaceName, $interfaceName, $modelToSign);
     generateClassAndInterface($modelToSign, $interfaceName, $properties);
     
@@ -232,7 +267,7 @@ function pestle_cli($argv, $options)
     //output("@TODO: The class property \$id is declared dynamically. According to current \"best practice\" it should be declared as a class property using one of the visibility keywords, like");
     
     //output("@TODO: the repository should have a \Pulsestorm\Apitest2\Api\Data\ThingInterfaceFactory as constructor dependency");        
-    output("@TODO: Make this work with actual arguments");
+//    output("@TODO: Make this work with actual arguments");
     output("@TODO: Decide what crud generation should do vs. this should do");
     output("@TODO: Attempt to extract interface name from generated model?");                    
     output("@TODO: What to do it repository already exists");
