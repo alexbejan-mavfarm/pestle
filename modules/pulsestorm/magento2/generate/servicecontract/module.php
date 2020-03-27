@@ -123,6 +123,11 @@ function fullClassNameToShortName($name)
     return array_pop($slices);
 }
 
+/**
+ * @param string $modelToSign
+ * @param string $interfaceName
+ * @param array $properties
+ */
 function generateClassAndInterface($modelToSign, $interfaceName, $properties)
 {
 
