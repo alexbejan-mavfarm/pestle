@@ -116,61 +116,71 @@ function snakeToCamel($string)
     return $string;
 }
 
+function fullClassNameToShortName($name)
+{
+    $slices = explode('\\', $name);
+
+    return array_pop($slices);
+}
+
 function generateClassAndInterface($modelToSign, $interfaceName, $properties)
 {
 
-    $methods = getMethodsFromProperties($properties);
-    
-    $contents = createClassTemplateWithUse($modelToSign, false, '\\' . $interfaceName);    
+    $contents = createClassTemplateWithUse($modelToSign, '\Magento\Framework\DataObject', fullClassNameToShortName($interfaceName));
     $classBody      = '';
-    $classBodyProps = '';
     $interfaceBody  = '';
+    $interfaceProps = '';
     
     foreach($properties as $propName=>$type)
     {
         $camelPropName = snakeToCamel($propName);
-        $classBodyProps .= '
-    /**
-     * @var '.$type.' $'.$propName.'
-     */                
-    protected $' . $propName . ';';
-    
+
         $classBody .= '
+    /**
+     * @inheritDoc
+     */
     public function get'.$camelPropName.'()
     {
-       return $this->'.$propName.';
-    }        
+        return $this->getData('.fullClassNameToShortName($interfaceName).'::'.strtoupper($propName).');
+    }
+    
+    /**
+     * @inheritDoc
+     */
     public function set'.$camelPropName.'($'.$propName.')
     {
-       $this->'.$propName.' = $'.$propName.';
-       return $this;
+        return $this->setData('.fullClassNameToShortName($interfaceName).'::'.strtoupper($propName).', $'.$propName.');
     }
 ';
 
+
+        $interfaceProps .= '
+    const ' . strtoupper($propName) . ' = \''. $propName . '\';';
+
         $interfaceBody .= '
-    /**
-     * @return '.$type.'
-     */
-     function get'.$camelPropName.'();
+   /**
+    * @return '.$type.'
+    */
+    public function get'.$camelPropName.'();
      
-    /**
-     * @param '.$type.' $'.$propName.'   
-     * @return $this     
-     */   
-     public function set'.$camelPropName.'($'.$propName.');
-';          
-     
+   /**
+    * @param '.$type.' $'.$propName.'
+    * @return $this
+    */
+    public function set'.$camelPropName.'($'.$propName.');
+';
+
     }
 
-    $classBody = $classBodyProps . "\n" . $classBody;
+    $interfaceBody = $interfaceProps . "\n". $interfaceBody;
     
     $contents = str_replace('<$body$>', $classBody, $contents);
-    $contents = str_replace('<$use$>', '', $contents);
+    $contents = str_replace('<$use$>', "\n".'use \\'.$interfaceName.';', $contents);
     createClassFile($modelToSign, $contents);
     
     // $contents = templateInterface($interfaceName,$methods);
     $contents = templateInterface($interfaceName,[]);
-    $contents = str_replace('{', "{\n" . $interfaceBody, $contents);
+    $contents = str_replace('{', "{" . $interfaceBody, $contents);
     createClassFile($interfaceName, $contents);
 }
 
@@ -188,8 +198,32 @@ function generateDiConfigurations($moduleName, $repositoryInterfaceName,
         'type'  =>$modelToSign]);                        
 }
 
+/**
+ * Reads the db_schema.xml and returns an array of column names and PHP types
+ * @param string $module_dir
+ * @param string $tableName
+ *
+ * @return array|bool
+ */
 function getDbSchemaTableDefinition($module_dir, $tableName)
 {
+    $dbTypeToPhpType = [
+        'int' => 'int',
+        'decimal' => 'float',
+        'timestamp' => 'string',
+        'integer' => 'int',
+        'bigint' => 'int',
+        'smallint' => 'int',
+        'tinyint' => 'int',
+        'text' => 'string',
+        'varchar' => 'string',
+        'longtext' => 'string',
+        'mediumtext' => 'string',
+        'blob' => 'string',
+        'datetime' => 'string',
+        'date' => 'string',
+        'boolean' => 'bool'
+    ];
     $path_db_schema_xml = $module_dir . '/etc/db_schema.xml';
     $db_schema_xml = simplexml_load_file($path_db_schema_xml);
 
@@ -202,10 +236,9 @@ function getDbSchemaTableDefinition($module_dir, $tableName)
     $tableDefinition = [];
 
     foreach ($nodes as $column) {
-        $tableDefinition[(string) $column['name']] = 'string'; // @todo set the correct data type
-//        var_dump($column->asXML());
+        $columnXsi = $column->attributes('xsi', true);
+        $tableDefinition[(string) $column['name']] = $dbTypeToPhpType[(string) $columnXsi['type']];
     }
-
     return $tableDefinition;
 }
 
@@ -242,11 +275,10 @@ function pestle_cli($argv, $options)
 
     if($options['dbschema-table'] && ($tableDefinition = getDbSchemaTableDefinition($moduleInfo->folder, $options['dbschema-table'])))
     {
-//        var_dump($tableDefinition);
-        $properties = array_merge($properties, $tableDefinition);
+        $properties = $tableDefinition;
     }
 
-//    die('asd');
+
     generateDiConfigurations($moduleName, $repositoryInterfaceName, 
         $repositoryName, $interfaceName, $modelToSign);
 
@@ -271,7 +303,7 @@ function pestle_cli($argv, $options)
     output("@TODO: Decide what crud generation should do vs. this should do");
     output("@TODO: Attempt to extract interface name from generated model?");                    
     output("@TODO: What to do it repository already exists");
-    output("@TODO: Attempt to extract fields from schema file? Or seperate command?");
+//    output("@TODO: Attempt to extract fields from schema file? Or seperate command?");
     output("@TODO: Base repository inimplemention (and webapi.xml URLs to match?)");    
 
     
